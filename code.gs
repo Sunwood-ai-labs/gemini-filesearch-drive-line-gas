@@ -226,7 +226,7 @@ function askAndPush_(userId, userText) {
     pushFlex_(userId, bubble, '回答');
 
     if (CONFIG.AUTO_SHOW_MENU_AFTER_ANSWER) {
-      Utilities.sleep(300);
+      Utilities.sleep(CONFIG.POST_ANSWER_MENU_DELAY_MS);
       pushFlex_(userId, flexMenuCarousel(), 'メニュー');
     }
   } catch (e) {
