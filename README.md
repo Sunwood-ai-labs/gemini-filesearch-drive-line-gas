@@ -1,8 +1,6 @@
 <div align="center">
-  <img src="./Whisk_header.jpeg" alt="Gemini File Search banner" width="720" />
+  <img src="./Whisk_header.jpeg" alt="Gemini File Search banner" width="100%" />
 </div>
-
-<h1 align="center">Gemini File Search × Google Drive × LINE × GAS</h1>
 
 <p align="center"><em>Gemini と Google Drive を掛け合わせて、LINE から自然言語でファイル検索できるカスタムワークフロー。</em></p>
 
