@@ -60,20 +60,20 @@ function doPost(e) {
       const text = (ev.message.text || '').trim();
 
       if (text === '取り込み') {
-        // 即時返信（受領）
-        replyFlex_(replyToken, flexInfoBubble('取り込みを開始', 'Drive → File Search のインデックスを作成します。', 0, '準備中…'));
+        // 受領（進捗中はボタン非表示）
+        replyFlex_(replyToken, flexInfoBubble('取り込みを開始', 'Drive → File Search のインデックスを作成します。', 0, '準備中…', false));
         runImportAndNotify_(userId);
         return ContentService.createTextOutput('OK');
       }
 
       if (text === '要約') {
-        replyFlex_(replyToken, flexInfoBubble('要約作成中', '取り込み済みストアから要約します。', 0, '検索中…'));
+        replyFlex_(replyToken, flexInfoBubble('要約作成中', '取り込み済みストアから要約します。', 0, '検索中…', false));
         askAndPush_(userId, CONFIG.TEST_PROMPT);
         return ContentService.createTextOutput('OK');
       }
 
       // 任意の質問として処理
-      replyFlex_(replyToken, flexInfoBubble('検索＆回答作成中', '資料群を横断検索して回答します。', 0, '検索中…'));
+      replyFlex_(replyToken, flexInfoBubble('検索＆回答作成中', '資料群を横断検索して回答します。', 0, '検索中…', false));
       askAndPush_(userId, text);
       return ContentService.createTextOutput('OK');
     }
@@ -108,11 +108,7 @@ function replyFlex_(replyToken, bubble) {
   };
   const payload = {
     replyToken,
-    messages: [{
-      type: 'flex',
-      altText: '処理中',
-      contents: bubble
-    }]
+    messages: [{ type: 'flex', altText: '通知', contents: bubble }]
   };
   UrlFetchApp.fetch(url, { method: 'post', headers, payload: JSON.stringify(payload), muteHttpExceptions: true });
 }
@@ -137,11 +133,7 @@ function pushFlex_(toUserId, bubble, altText) {
   };
   const payload = {
     to: toUserId,
-    messages: [{
-      type: 'flex',
-      altText: altText || '通知',
-      contents: bubble
-    }]
+    messages: [{ type: 'flex', altText: altText || '通知', contents: bubble }]
   };
   UrlFetchApp.fetch(url, { method: 'post', headers, payload: JSON.stringify(payload), muteHttpExceptions: true });
 }
@@ -158,26 +150,26 @@ function runImportAndNotify_(userId) {
     let storeName = prop_('FILE_SEARCH_STORE_NAME').trim();
     if (!storeName) {
       const store = createFileSearchStore_(apiKey, CONFIG.STORE_DISPLAY_NAME);
-      storeName = store.name;
+      storeName = store.name; // "fileSearchStores/xxxx"
       PropertiesService.getScriptProperties().setProperty('FILE_SEARCH_STORE_NAME', storeName);
     }
-    pushFlex_(userId, flexInfoBubble('準備完了', `ストア: ${storeName}`, 5, 'Drive をスキャン中…'), '進捗');
+    pushFlex_(userId, flexInfoBubble('準備完了', `ストア: ${storeName}`, 5, 'Drive をスキャン中…', false), '進捗');
 
     // 2) 取り込み対象収集（フォルダ直下）
     const files = driveListFilesInFolder_(folderId);
     if (!files.length) { pushFlex_(userId, flexErrorBubble('フォルダ内にファイルが見つかりませんでした。'), 'エラー'); return; }
-    pushFlex_(userId, flexInfoBubble('スキャン完了', `検出ファイル: ${files.length} 件`, 15, 'エクスポート/ダウンロード中…'), '進捗');
+    pushFlex_(userId, flexInfoBubble('スキャン完了', `検出ファイル: ${files.length} 件`, 15, 'エクスポート/ダウンロード中…', false), '進捗');
 
     const blobs = [];
     let dlOk = 0, dlNg = 0;
     for (let i=0; i<files.length; i++) {
       const f = files[i];
       const b = driveDownloadFileAsBlob_(f);
-      if (b) { blobs.push(b); dlOk++; }
-      else { dlNg++; }
+      if (b) { blobs.push(b); dlOk++; } else { dlNg++; }
+
       if ((i+1) % CONFIG.UPLOAD_PROGRESS_EVERY === 0 || i === files.length - 1) {
         const p = Math.min(20 + Math.round((i+1)/files.length * 20), 40); // 20%→40%
-        pushFlex_(userId, flexInfoBubble('取得中…', `ダウンロード/エクスポート ${i+1}/${files.length} 件`, p, `成功 ${dlOk} / 失敗 ${dlNg}`), '進捗');
+        pushFlex_(userId, flexInfoBubble('取得中…', `ダウンロード/エクスポート ${i+1}/${files.length} 件`, p, `成功 ${dlOk} / 失敗 ${dlNg}`, false), '進捗');
       }
       Utilities.sleep(60);
     }
@@ -191,7 +183,7 @@ function runImportAndNotify_(userId) {
       ops.push(op.name);
       if ((i+1) % CONFIG.UPLOAD_PROGRESS_EVERY === 0 || i === blobs.length - 1) {
         const p = Math.min(40 + Math.round((i+1)/blobs.length * 30), 70); // 40%→70%
-        pushFlex_(userId, flexInfoBubble('アップロード中…', `${i+1}/${blobs.length} 件`, p, 'File Search に投入'), '進捗');
+        pushFlex_(userId, flexInfoBubble('アップロード中…', `${i+1}/${blobs.length} 件`, p, 'File Search に投入', false), '進捗');
       }
       Utilities.sleep(100);
     }
@@ -217,7 +209,7 @@ function runImportAndNotify_(userId) {
       const doneCount = doneNow.length;
       const pct = Math.min(70 + Math.round(doneCount/ops.length * 25), 95); // 70%→95%
       if (t % CONFIG.POLL_PROGRESS_EVERY === 0 || pct !== lastPct) {
-        pushFlex_(userId, flexInfoBubble('インデックス作成中…', `完了 ${doneCount}/${ops.length} 件`, pct, '解析・索引の構築'), '進捗');
+        pushFlex_(userId, flexInfoBubble('インデックス作成中…', `完了 ${doneCount}/${ops.length} 件`, pct, '解析・索引の構築', false), '進捗');
         lastPct = pct;
       }
       if (doneCount >= ops.length) break;
@@ -228,7 +220,7 @@ function runImportAndNotify_(userId) {
     const ok = waitAllOperationsDone_(apiKey, ops);
     if (!ok) { pushFlex_(userId, flexErrorBubble('インデックス作成がタイムアウトしました。時間をおいて再試行してください。'), 'エラー'); return; }
 
-    // 5) 完了通知
+    // 5) 完了通知（ここはボタンあり）
     pushFlex_(userId, flexSuccessBubble('取り込み完了', `store: ${storeName}`, '「要約」や質問文を送ってください。'), '完了');
   } catch (e) {
     console.error('runImportAndNotify_ error:', e);
@@ -244,7 +236,7 @@ function askAndPush_(userId, userText) {
     let storeName = prop_('FILE_SEARCH_STORE_NAME').trim();
     if (!storeName) { pushFlex_(userId, flexErrorBubble('まず「取り込み」を実行してください。（ストアが未作成）'), 'エラー'); return; }
 
-    pushFlex_(userId, flexInfoBubble('検索中…', '資料群の根拠を探索しています。', 15, 'File Search 有効'), '進捗');
+    pushFlex_(userId, flexInfoBubble('検索中…', '資料群の根拠を探索しています。', 15, 'File Search 有効', false), '進捗');
 
     const answer = askWithFileSearch_(GEMINI_API_KEY(), storeName, userText);
     const parsed = parseAnswer_(answer);
@@ -262,7 +254,6 @@ function askAndPush_(userId, userText) {
 
 //////////////////// 単体テスト（LINEなし） ////////////////////
 
-/** 1) Driveアクセスの単体テスト（一覧＆最初の数件をexport/ダウンロード） */
 function test_driveAccess() {
   assert_();
   const folderId = DRIVE_FOLDER_ID();
@@ -283,7 +274,6 @@ function test_driveAccess() {
   return 'OK';
 }
 
-/** 2) File Search 通しテスト（ストア作成→取り込み→待ち→質問） */
 function test_fileSearchEndToEnd() {
   assert_();
   const apiKey = GEMINI_API_KEY();
@@ -323,7 +313,6 @@ function test_fileSearchEndToEnd() {
   return 'OK';
 }
 
-/** 3) 既存ストアに対して質問だけ（取り込み済み・store名をプロパティから） */
 function test_askAfterExistingStore() {
   assert_();
   const apiKey = GEMINI_API_KEY();
@@ -485,28 +474,24 @@ function parseAnswer_(apiJson) {
 }
 
 //////////////////// Flex Message ビルダー ////////////////////
-// 情報/進捗（バー付き）
-function flexInfoBubble(title, subtitle, percent, footnote) {
-  return {
-    type: 'bubble',
-    size: 'mega',
-    body: {
-      type: 'box', layout: 'vertical', spacing: 'md', contents: [
-        { type: 'text', text: title, weight: 'bold', size: 'lg' },
-        { type: 'text', text: subtitle || '', wrap: true, color: '#666666' },
-        progressBar_(percent),
-        footnote ? { type: 'text', text: footnote, size: 'sm', color: '#999999', wrap: true } : { type: 'box', layout: 'baseline', contents: [] }
-      ]
-    },
-    footer: {
-      type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
-        quickButton_('取り込み'), quickButton_('要約')
-      ]
-    }
+// 情報/進捗（バー付き）★ showActionsでフッター表示切替
+function flexInfoBubble(title, subtitle, percent, footnote, showActions = true) {
+  const body = {
+    type: 'box', layout: 'vertical', spacing: 'md', contents: [
+      { type: 'text', text: title, weight: 'bold', size: 'lg' },
+      { type: 'text', text: subtitle || '', wrap: true, color: '#666666' },
+      progressBar_(percent),
+      footnote ? { type: 'text', text: footnote, size: 'sm', color: '#999999', wrap: true } : { type: 'box', layout: 'baseline', contents: [] }
+    ]
   };
+  const bubble = { type: 'bubble', size: 'mega', body };
+  if (showActions) {
+    bubble.footer = { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [ quickButton_('取り込み'), quickButton_('要約') ] };
+  }
+  return bubble;
 }
 
-// 成功通知
+// 成功通知（完了時はボタンあり）
 function flexSuccessBubble(title, subtitle, footnote) {
   return {
     type: 'bubble',
@@ -522,7 +507,7 @@ function flexSuccessBubble(title, subtitle, footnote) {
   };
 }
 
-// エラー通知
+// エラー通知（リカバリ用に「取り込み」ボタン残す）
 function flexErrorBubble(message) {
   return {
     type: 'bubble',
@@ -537,14 +522,10 @@ function flexErrorBubble(message) {
   };
 }
 
-// 回答カード（要約＋根拠リンク）
+// 回答カード（要約＋根拠リンク）※フッターにショートカットボタンあり
 function flexAnswerBubble(question, answerPreview, citations) {
   const citeItems = (citations || []).map((u, i) => ({
-    type: 'text',
-    text: `［${i+1}］ ${u}`,
-    size: 'sm',
-    color: '#4a7bd3',
-    wrap: true
+    type: 'text', text: `［${i+1}］ ${u}`, size: 'sm', color: '#4a7bd3', wrap: true
   }));
   return {
     type: 'bubble',
@@ -564,12 +545,7 @@ function flexAnswerBubble(question, answerPreview, citations) {
         ]} : { type: 'box', layout: 'vertical', contents: [] }
       ]
     },
-    footer: {
-      type: 'box', layout: 'horizontal', spacing: 'sm', contents: [
-        quickButton_('取り込み'),
-        quickButton_('要約')
-      ]
-    }
+    footer: { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [ quickButton_('取り込み'), quickButton_('要約') ] }
   };
 }
 
@@ -581,30 +557,12 @@ function progressBar_(percent) {
     layout: 'vertical',
     contents: [
       { type: 'box', layout: 'vertical', contents: [{ type: 'filler' }], height: '8px', backgroundColor: '#e0e0e0', cornerRadius: 'sm' },
-      {
-        type: 'box',
-        layout: 'vertical',
-        contents: [{ type: 'filler' }],
-        height: '8px',
-        backgroundColor: '#4a7bd3',
-        cornerRadius: 'sm',
-        position: 'absolute',
-        width: pct + '%'
-      }
+      { type: 'box', layout: 'vertical', contents: [{ type: 'filler' }], height: '8px', backgroundColor: '#4a7bd3', cornerRadius: 'sm', position: 'absolute', width: pct + '%' }
     ],
     position: 'relative',
     margin: 'md'
   };
 }
-
-function quickButton_(label) {
-  return {
-    type: 'button',
-    style: 'link',
-    action: { type: 'message', label, text: label }
-  };
-}
-
+function quickButton_(label) { return { type: 'button', style: 'link', action: { type: 'message', label, text: label } }; }
 function clamp_(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function truncate_(s, n) { if (!s) return s; return s.length > n ? s.slice(0, n - 1) + '…' : s; }
-
