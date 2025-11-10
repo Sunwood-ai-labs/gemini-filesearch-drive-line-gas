@@ -17,6 +17,7 @@ const CONFIG = {
   OPERATION_POLL_MAX: 60,              // *5秒 = 最大約5分
   OPERATION_POLL_INTERVAL_MS: 5000,
   AUTO_SHOW_MENU_AFTER_ANSWER: true,   // 回答送信後にメニューを自動表示
+  POST_ANSWER_MENU_DELAY_MS: 1500,     // 回答後にメニューを出すまでの待機（ミリ秒）
 
   // Google系ファイルは解析しやすいフォーマットに export
   EXPORT_MIMES: {
@@ -226,7 +227,8 @@ function askAndPush_(userId, userText) {
     pushFlex_(userId, bubble, '回答');
 
     if (CONFIG.AUTO_SHOW_MENU_AFTER_ANSWER) {
-      Utilities.sleep(CONFIG.POST_ANSWER_MENU_DELAY_MS);
+      const delay = Number(CONFIG.POST_ANSWER_MENU_DELAY_MS || 0);
+      if (delay > 0) Utilities.sleep(delay);
       pushFlex_(userId, flexMenuCarousel(), 'メニュー');
     }
   } catch (e) {
