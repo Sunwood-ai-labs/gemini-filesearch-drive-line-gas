@@ -76,6 +76,16 @@
   <p><em>プロジェクトのトーン&マナーを表すヘッダーイメージ</em></p>
 </div>
 
+<div align="center">
+  <img src="./images/Whisk_33bc576bdc47ece90934af7e451859b1dr.jpeg" alt="Google Drive 取り込みフローのビジュアル" width="520" />
+  <p><em>Gemini が Google Drive からファイルを取り込むシナリオを表現したビジュアル</em></p>
+</div>
+
+<div align="center">
+  <img src="./images/Whisk_cd6f4e906133d8897f74fffad8da12b2dr.jpeg" alt="Gemini 要約レスポンスのビジュアル" width="520" />
+  <p><em>取り込んだ情報を Gemini が要約し、LINE に返す流れをイメージしたビジュアル</em></p>
+</div>
+
 ## 🤝 Contributing
 1. 新しいブランチを作成してください。
 2. 変更内容を説明する Issue / Pull Request を作成し、`docs/` フォルダのドキュメント更新も忘れずに行います。
