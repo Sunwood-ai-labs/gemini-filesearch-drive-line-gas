@@ -1,6 +1,6 @@
 /**
  * Gemini File Search（DRIVE_FOLDER_IDのみ） × LINE Bot
- * - 進捗：単体バブル or 横スクロール（carousel）で段階を並べて表示
+ * - 進捗：単体バブルで段階を順番に表示
  * - 初期メニュー：画像付きの「取り込み」「要約」ボタン
  *
  * Script Properties:
@@ -27,14 +27,10 @@ const CONFIG = {
   // 代表質問（「要約」で使用）
   TEST_PROMPT: 'この資料群の要点を5行以内で日本語要約してください。',
 
-  // 進捗の通知頻度
-  UPLOAD_PROGRESS_EVERY: 5, // n件ごとに進捗push
-  POLL_PROGRESS_EVERY: 2,   // n回ポーリングごとに進捗push
-
   // 画像メニュー（任意で差し替えてOK）
   THEME_COLOR: '#4a7bd3',
-  IMG_IMPORT: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?q=80&w=1600&auto=format&fit=crop',
-  IMG_SUMMARY: 'https://images.unsplash.com/photo-1551281044-8b89adc2f69b?q=80&w=1600&auto=format&fit=crop'
+  IMG_IMPORT:  'https://picsum.photos/1200/675?random=11',
+  IMG_SUMMARY: 'https://picsum.photos/1200/675?random=22'
 };
 
 //////////////////// プロパティ ////////////////////
@@ -54,8 +50,8 @@ function doPost(e) {
     const replyToken = ev.replyToken;
     const userId = ev.source && ev.source.userId ? ev.source.userId : null;
 
-    // 友だち追加時：メニューを表示
-    if (ev.type === 'follow') {
+    // 友だち追加 or グループ参加時 → 初期メニューを出す
+    if (ev.type === 'follow' || ev.type === 'join') {
       replyFlex_(replyToken, flexMenuCarousel());
       return ContentService.createTextOutput('OK');
     }
@@ -63,7 +59,8 @@ function doPost(e) {
     if (ev.type === 'message' && ev.message?.type === 'text') {
       const text = (ev.message.text || '').trim();
 
-      if (text === 'メニュー' || text === 'ヘルプ') {
+      // いつでもメニュー呼び出し可能
+      if (text === 'メニュー' || text === 'ヘルプ' || text.toLowerCase() === 'menu') {
         replyFlex_(replyToken, flexMenuCarousel());
         return ContentService.createTextOutput('OK');
       }
@@ -112,6 +109,11 @@ function pushFlex_(toUserId, contents, altText) {
   UrlFetchApp.fetch(url, { method: 'post', headers, payload: JSON.stringify(payload), muteHttpExceptions: true });
 }
 
+// 進捗送信用のシンプルヘルパー（%が変わった時だけ送る）
+function pushProgress_(userId, title, subtitle, pct, footnote) {
+  pushFlex_(userId, flexInfoBubble(title, subtitle, pct, footnote, false), '進捗');
+}
+
 //////////////////// 取り込み（Drive→File Search） ////////////////////
 function runImportAndNotify_(userId) {
   try {
@@ -119,7 +121,6 @@ function runImportAndNotify_(userId) {
     const folderId = DRIVE_FOLDER_ID();
     if (!folderId) { pushFlex_(userId, flexErrorBubble('DRIVE_FOLDER_ID が未設定です。'), 'エラー'); return; }
 
-    // 1) ストア作成 or 再利用
     const apiKey = GEMINI_API_KEY();
     let storeName = prop_('FILE_SEARCH_STORE_NAME').trim();
     if (!storeName) {
@@ -128,60 +129,45 @@ function runImportAndNotify_(userId) {
       PropertiesService.getScriptProperties().setProperty('FILE_SEARCH_STORE_NAME', storeName);
     }
 
-    // --- 横スクロールでステージ全体をサマリ表示（準備のスナップショット） ---
-    pushFlex_(userId,
-      flexProgressCarousel({ prep: 100, scan: 0, fetch: 0, upload: 0, index: 0, subtitle: `store: ${storeName}` }),
-      '進捗'
-    );
+    // 準備
+    pushProgress_(userId, '準備', `store: ${storeName}`, 5, 'Drive をスキャン中…');
 
-    // 2) 収集
+    // スキャン
     const files = driveListFilesInFolder_(folderId);
     if (!files.length) { pushFlex_(userId, flexErrorBubble('フォルダ内にファイルが見つかりませんでした。'), 'エラー'); return; }
+    pushProgress_(userId, 'スキャン', 'Drive をスキャン', 20, `検出: ${files.length} 件`);
 
-    // スキャン完了のスナップショット
-    pushFlex_(userId,
-      flexProgressCarousel({ prep: 100, scan: 100, fetch: 0, upload: 0, index: 0, subtitle: `検出: ${files.length}件` }),
-      '進捗'
-    );
-
+    // 取得（%はおおまかに10%刻み）
     const blobs = [];
-    let dlOk = 0, dlNg = 0;
+    let dlOk = 0, dlNg = 0, lastSent = -1;
     for (let i=0; i<files.length; i++) {
-      const f = files[i];
-      const b = driveDownloadFileAsBlob_(f);
+      const b = driveDownloadFileAsBlob_(files[i]);
       if (b) { blobs.push(b); dlOk++; } else { dlNg++; }
-
-      // 取得フェーズの段階スナップショットをたまに出す
-      if ((i+1) % CONFIG.UPLOAD_PROGRESS_EVERY === 0 || i === files.length - 1) {
-        const fetchPct = Math.round(((i+1) / files.length) * 100);
-        pushFlex_(userId,
-          flexProgressCarousel({
-            prep: 100, scan: 100, fetch: fetchPct, upload: 0, index: 0,
-            subtitle: `取得 成功${dlOk}／失敗${dlNg}`
-          }),
-          '進捗'
-        );
+      const pct = 20 + Math.round(((i+1)/files.length) * 20);  // 20→40
+      if (pct >= lastSent + 10 || i === files.length - 1) {
+        pushProgress_(userId, '取得', 'エクスポート/ダウンロード', pct, `成功 ${dlOk} / 失敗 ${dlNg}`);
+        lastSent = pct;
       }
       Utilities.sleep(60);
     }
     if (!blobs.length) { pushFlex_(userId, flexErrorBubble('有効な取り込み対象が0件でした。権限や対応形式をご確認ください。'), 'エラー'); return; }
 
-    // 3) アップロード
+    // アップロード（40→70）
+    lastSent = 39;
     const ops = [];
     for (let i=0; i<blobs.length; i++) {
-      const b = blobs[i];
-      const op = uploadToFileSearchStore_(apiKey, storeName, b.bytes, b.contentType);
+      const op = uploadToFileSearchStore_(apiKey, storeName, blobs[i].bytes, blobs[i].contentType);
       ops.push(op.name);
-
-      if ((i+1) % CONFIG.UPLOAD_PROGRESS_EVERY === 0 || i === blobs.length - 1) {
-        const upPct = Math.round(((i+1) / blobs.length) * 100);
-        pushFlex_(userId, flexProgressCarousel({ prep: 100, scan: 100, fetch: 100, upload: upPct, index: 0 }), '進捗');
+      const pct = 40 + Math.round(((i+1)/blobs.length) * 30);
+      if (pct >= lastSent + 10 || i === blobs.length - 1) {
+        pushProgress_(userId, 'アップロード', 'File Search に投入', pct, `${i+1}/${blobs.length} 件`);
+        lastSent = pct;
       }
       Utilities.sleep(100);
     }
 
-    // 4) インデックス作成（ポーリング）
-    let lastPct = 0;
+    // インデックス（70→95）
+    lastSent = 69;
     for (let t=0; t<CONFIG.OPERATION_POLL_MAX; t++) {
       let done = 0;
       for (const name of ops) {
@@ -198,10 +184,10 @@ function runImportAndNotify_(userId) {
         }
         Utilities.sleep(40);
       }
-      const idxPct = Math.round((done / ops.length) * 100);
-      if (t % CONFIG.POLL_PROGRESS_EVERY === 0 && idxPct !== lastPct) {
-        pushFlex_(userId, flexProgressCarousel({ prep: 100, scan: 100, fetch: 100, upload: 100, index: Math.min(idxPct, 98) }), '進捗');
-        lastPct = idxPct;
+      const pct = 70 + Math.round((done/ops.length) * 25);
+      if (pct >= lastSent + 5) {
+        pushProgress_(userId, 'インデックス', '解析・索引構築', Math.min(pct, 95), `完了 ${done}/${ops.length}`);
+        lastSent = pct;
       }
       if (done >= ops.length) break;
       Utilities.sleep(CONFIG.OPERATION_POLL_INTERVAL_MS);
@@ -210,8 +196,9 @@ function runImportAndNotify_(userId) {
     const ok = waitAllOperationsDone_(apiKey, ops);
     if (!ok) { pushFlex_(userId, flexErrorBubble('インデックス作成がタイムアウトしました。'), 'エラー'); return; }
 
-    // 5) 完了通知（ボタンあり）
+    // 完了（ボタンあり）＋ 初期メニューも続けて出す
     pushFlex_(userId, flexSuccessBubble('取り込み完了', `store: ${storeName}`, '「要約」や質問文を送ってください。'), '完了');
+    pushFlex_(userId, flexMenuCarousel(), 'メニュー');
   } catch (e) {
     console.error('runImportAndNotify_ error:', e);
     if (userId) pushFlex_(userId, flexErrorBubble('取り込み中にエラーが発生しました：' + String(e)), 'エラー');
@@ -510,19 +497,6 @@ function heroMenuBubble(title, desc, imageUrl, actionText) {
       { type: 'button', style: 'link', action: { type: 'message', label: 'メニュー', text: 'メニュー' } }
     ]}
   };
-}
-
-// 5) 進捗の横スクロール（carousel）
-//    prep/scan/fetch/upload/index の5段を並べ、各段の%を受け取って表示
-function flexProgressCarousel({ prep=0, scan=0, fetch=0, upload=0, index=0, subtitle='' }) {
-  const bubbles = [
-    flexInfoBubble('準備', subtitle || 'ストア準備', prep, '', false),
-    flexInfoBubble('スキャン', 'Drive をスキャン', scan, '', false),
-    flexInfoBubble('取得', 'エクスポート/ダウンロード', fetch, '', false),
-    flexInfoBubble('アップロード', 'File Searchに投入', upload, '', false),
-    flexInfoBubble('インデックス', '解析・索引構築', index, '', false),
-  ];
-  return { type: 'carousel', contents: bubbles };
 }
 
 // 共通パーツ
