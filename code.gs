@@ -30,8 +30,8 @@ const CONFIG = {
 
   // 画像メニュー（任意で差し替えてOK）
   THEME_COLOR: '#4a7bd3',
-  IMG_IMPORT:  'https://picsum.photos/1200/675?random=11',
-  IMG_SUMMARY: 'https://picsum.photos/1200/675?random=22'
+  IMG_IMPORT:  'https://raw.githubusercontent.com/Sunwood-ai-labs/gemini-filesearch-drive-line-gas/refs/heads/main/images/Whisk_33bc576bdc47ece90934af7e451859b1dr.jpeg',
+  IMG_SUMMARY: 'https://raw.githubusercontent.com/Sunwood-ai-labs/gemini-filesearch-drive-line-gas/refs/heads/main/images/Whisk_cd6f4e906133d8897f74fffad8da12b2dr.jpeg'
 };
 
 //////////////////// プロパティ ////////////////////
