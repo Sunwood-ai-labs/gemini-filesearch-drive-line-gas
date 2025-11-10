@@ -16,6 +16,7 @@ const CONFIG = {
   STORE_DISPLAY_NAME: 'drive-import-store',
   OPERATION_POLL_MAX: 60,              // *5秒 = 最大約5分
   OPERATION_POLL_INTERVAL_MS: 5000,
+  AUTO_SHOW_MENU_AFTER_ANSWER: true,   // 回答送信後にメニューを自動表示
 
   // Google系ファイルは解析しやすいフォーマットに export
   EXPORT_MIMES: {
@@ -223,6 +224,11 @@ function askAndPush_(userId, userText) {
     const cites = (parsed.citations || []).slice(0, 5);
     const bubble = flexAnswerBubble(userText, preview, cites); // 回答はボタンあり
     pushFlex_(userId, bubble, '回答');
+
+    if (CONFIG.AUTO_SHOW_MENU_AFTER_ANSWER) {
+      Utilities.sleep(300);
+      pushFlex_(userId, flexMenuCarousel(), 'メニュー');
+    }
   } catch (e) {
     console.error('askAndPush_ error:', e);
     if (userId) pushFlex_(userId, flexErrorBubble('回答中にエラーが発生しました：' + String(e)), 'エラー');
