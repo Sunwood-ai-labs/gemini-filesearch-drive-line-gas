@@ -222,8 +222,8 @@ function askAndPush_(userId, userText) {
     const parsed = parseAnswer_(answer);
 
     const preview = truncate_(parsed.text || '(回答が取得できませんでした)', 850);
-    const cites = (parsed.citations || []).slice(0, 5);
-    const bubble = flexAnswerBubble(userText, preview, cites); // 回答はボタンあり
+    const refs = (parsed.references || []).slice(0, 5);
+    const bubble = flexAnswerBubble(userText, preview, refs, parsed.citationCount); // 回答はボタンあり
     pushFlex_(userId, bubble, '回答');
 
     if (CONFIG.AUTO_SHOW_MENU_AFTER_ANSWER) {
@@ -415,15 +415,32 @@ function parseAnswer_(apiJson) {
   const textParts = first?.content?.parts?.map(p => p.text).filter(Boolean) || [];
   const text = textParts.join('\n');
 
-  const citations = [];
+  // 参考資料を構造化して抽出
+  const references = [];
   const grounding = first?.groundingMetadata;
   if (grounding?.supportingContent) {
-    grounding.supportingContent.forEach(sc => {
-      if (sc?.metadata?.sourceUri) citations.push(sc.metadata.sourceUri);
-      if (sc?.metadata?.fileName) citations.push(sc.metadata.fileName);
+    grounding.supportingContent.forEach((sc, index) => {
+      const metadata = sc?.metadata || {};
+      const ref = {
+        index: index + 1,
+        fileName: metadata.fileName || null,
+        sourceUri: metadata.sourceUri || null,
+        title: metadata.title || null,
+        // チャンクの内容（プレビュー用、もしあれば）
+        snippet: sc?.text ? truncate_(sc.text, 150) : null
+      };
+      // ファイル名またはURIが存在する場合のみ追加
+      if (ref.fileName || ref.sourceUri) {
+        references.push(ref);
+      }
     });
   }
-  return { text, citations: Array.from(new Set(citations)).slice(0, 10) };
+
+  return {
+    text,
+    references: references.slice(0, 10),
+    citationCount: references.length
+  };
 }
 
 //////////////////// Flex ビルダー ////////////////////
@@ -468,21 +485,84 @@ function flexErrorBubble(message) {
 }
 
 // 3) 回答（要約＋根拠リンク）※ボタンあり
-function flexAnswerBubble(question, answerPreview, citations) {
-  const citeItems = (citations || []).map((u, i) => ({ type: 'text', text: `［${i+1}］ ${u}`, size: 'sm', color: CONFIG.THEME_COLOR, wrap: true }));
+function flexAnswerBubble(question, answerPreview, references, totalCount) {
+  // 回答本文のコンテンツ
+  const bodyContents = [
+    { type: 'text', text: answerPreview, wrap: true, color: '#1a1a1a', size: 'md' }
+  ];
+
+  // 参考資料セクションの作成
+  if (references && references.length > 0) {
+    // セパレーター
+    bodyContents.push({
+      type: 'separator',
+      margin: 'xl'
+    });
+
+    // 参考資料のタイトル
+    const refTitle = totalCount > references.length
+      ? `📚 参考資料（${references.length}/${totalCount}件を表示）`
+      : `📚 参考資料（${references.length}件）`;
+
+    bodyContents.push({
+      type: 'text',
+      text: refTitle,
+      weight: 'bold',
+      size: 'sm',
+      color: CONFIG.THEME_COLOR,
+      margin: 'lg'
+    });
+
+    // 各参考資料のボックス
+    references.forEach(ref => {
+      const refBox = buildReferenceBox_(ref);
+      bodyContents.push(refBox);
+    });
+  }
+
   return {
-    type: 'bubble', size: 'mega',
-    header: { type: 'box', layout: 'vertical', contents: [
-      { type: 'text', text: '回答', weight: 'bold', size: 'lg' },
-      { type: 'text', text: 'Q: ' + truncate_(question, 120), size: 'sm', color: '#666666', wrap: true }
-    ]},
-    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [
-      { type: 'text', text: answerPreview, wrap: true },
-      (citeItems.length > 0)
-        ? { type: 'box', layout: 'vertical', spacing: 'sm', contents: [{ type: 'text', text: '— 根拠 —', weight: 'bold', size: 'sm' }, ...citeItems] }
-        : { type: 'box', layout: 'vertical', contents: [] }
-    ]},
-    footer: { type: 'box', layout: 'horizontal', spacing: 'sm', contents: [ quickButton_('取り込み'), quickButton_('要約') ] }
+    type: 'bubble',
+    size: 'mega',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'text',
+          text: '💡 AI回答',
+          weight: 'bold',
+          size: 'lg',
+          color: CONFIG.THEME_COLOR
+        },
+        {
+          type: 'text',
+          text: 'Q: ' + truncate_(question, 120),
+          size: 'sm',
+          color: '#666666',
+          wrap: true,
+          margin: 'sm'
+        }
+      ],
+      backgroundColor: '#f7f7f7',
+      paddingAll: 'lg'
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: bodyContents,
+      paddingAll: 'lg'
+    },
+    footer: {
+      type: 'box',
+      layout: 'horizontal',
+      spacing: 'sm',
+      contents: [
+        quickButton_('取り込み'),
+        quickButton_('要約')
+      ],
+      paddingAll: 'md'
+    }
   };
 }
 
@@ -504,6 +584,61 @@ function heroMenuBubble(title, desc, imageUrl, actionText) {
       { type: 'button', style: 'primary', color: CONFIG.THEME_COLOR, action: { type: 'message', label: title, text: actionText } },
       { type: 'button', style: 'link', action: { type: 'message', label: 'メニュー', text: 'メニュー' } }
     ]}
+  };
+}
+
+// 参考資料ボックスを構築
+function buildReferenceBox_(ref) {
+  const contents = [];
+
+  // インデックス番号とファイル名
+  const displayName = ref.fileName || ref.title || 'ドキュメント';
+  contents.push({
+    type: 'text',
+    text: `📄 [${ref.index}] ${truncate_(displayName, 60)}`,
+    weight: 'bold',
+    size: 'sm',
+    color: '#2c3e50',
+    wrap: true
+  });
+
+  // ソースURI（もしあれば）
+  if (ref.sourceUri) {
+    // URIを短縮して表示
+    const shortUri = truncate_(ref.sourceUri, 80);
+    contents.push({
+      type: 'text',
+      text: `🔗 ${shortUri}`,
+      size: 'xs',
+      color: CONFIG.THEME_COLOR,
+      wrap: true,
+      margin: 'xs'
+    });
+  }
+
+  // スニペット（もしあれば）
+  if (ref.snippet) {
+    contents.push({
+      type: 'text',
+      text: `"${ref.snippet}"`,
+      size: 'xs',
+      color: '#7f8c8d',
+      wrap: true,
+      margin: 'sm',
+      style: 'italic'
+    });
+  }
+
+  return {
+    type: 'box',
+    layout: 'vertical',
+    contents: contents,
+    backgroundColor: '#f9f9f9',
+    cornerRadius: 'md',
+    paddingAll: 'md',
+    margin: 'sm',
+    borderWidth: '1px',
+    borderColor: '#e0e0e0'
   };
 }
 
