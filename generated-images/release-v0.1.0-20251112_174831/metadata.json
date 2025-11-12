@@ -1,0 +1,11 @@
+{
+  "generation_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "prompt": "A small phoenix sculpted entirely from soft polymer clay, designed with rounded, baby-like proportions and simplified, charming features. The wings curve gracefully in hues of coral orange and rose gold, glowing gently as if from within. Lighting is soft and diffuse, wrapping around its form in a calm off-white space. Overlay “Gemini File Search × Google Drive × LINE × GAS - v0\.1\.0 -” in refined golden script, elegantly placed below the figurine like a signature of light.",
+  "model": "imagen-4-ultra",
+  "num_images": 1,
+  "aspect_ratio": "16:9",
+  "seed": "",
+  "workflow_run": "1",
+  "commit_sha": "3811fae14ef9b6f9109dc262797b5ed6436efbab",
+  "tag": "v0.1.0"
+}
