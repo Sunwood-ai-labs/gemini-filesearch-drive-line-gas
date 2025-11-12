@@ -418,19 +418,53 @@ function parseAnswer_(apiJson) {
   // 参考資料を構造化して抽出
   const references = [];
   const grounding = first?.groundingMetadata;
+
+  // supportingContent から参考資料を抽出
   if (grounding?.supportingContent) {
     grounding.supportingContent.forEach((sc, index) => {
       const metadata = sc?.metadata || {};
+
+      // チャンクの内容を取得（複数のフィールドを確認）
+      let chunkText = null;
+      if (sc?.text) {
+        chunkText = sc.text;
+      } else if (sc?.content) {
+        chunkText = sc.content;
+      } else if (sc?.chunk) {
+        chunkText = sc.chunk;
+      }
+
       const ref = {
         index: index + 1,
-        fileName: metadata.fileName || null,
-        sourceUri: metadata.sourceUri || null,
+        fileName: metadata.fileName || metadata.name || null,
+        sourceUri: metadata.sourceUri || metadata.uri || null,
         title: metadata.title || null,
-        // チャンクの内容（プレビュー用、もしあれば）
-        snippet: sc?.text ? truncate_(sc.text, 150) : null
+        // チャンクの内容（より長く表示）
+        snippet: chunkText ? truncate_(chunkText, 300) : null,
+        // チャンクの完全な内容も保存（デバッグ用）
+        fullText: chunkText || null
       };
-      // ファイル名またはURIが存在する場合のみ追加
-      if (ref.fileName || ref.sourceUri) {
+
+      // ファイル名、URI、またはスニペットが存在する場合に追加
+      if (ref.fileName || ref.sourceUri || ref.snippet) {
+        references.push(ref);
+      }
+    });
+  }
+
+  // groundingChunks も確認（File Search の新しい構造）
+  if (grounding?.groundingChunks) {
+    grounding.groundingChunks.forEach((chunk, index) => {
+      const ref = {
+        index: references.length + 1,
+        fileName: chunk.metadata?.fileName || chunk.metadata?.name || null,
+        sourceUri: chunk.metadata?.sourceUri || chunk.metadata?.uri || chunk.web?.uri || null,
+        title: chunk.metadata?.title || chunk.web?.title || null,
+        snippet: chunk.text ? truncate_(chunk.text, 300) : null,
+        fullText: chunk.text || null
+      };
+
+      if (ref.fileName || ref.sourceUri || ref.snippet) {
         references.push(ref);
       }
     });
@@ -508,9 +542,18 @@ function flexAnswerBubble(question, answerPreview, references, totalCount) {
       type: 'text',
       text: refTitle,
       weight: 'bold',
-      size: 'sm',
+      size: 'md',
       color: CONFIG.THEME_COLOR,
       margin: 'lg'
+    });
+
+    // 参考資料の説明
+    bodyContents.push({
+      type: 'text',
+      text: 'AIが参照した文章を確認できます',
+      size: 'xs',
+      color: '#7f8c8d',
+      margin: 'xs'
     });
 
     // 各参考資料のボックス
@@ -587,11 +630,11 @@ function heroMenuBubble(title, desc, imageUrl, actionText) {
   };
 }
 
-// 参考資料ボックスを構築
+// 参考資料ボックスを構築（引用文章を強調表示）
 function buildReferenceBox_(ref) {
   const contents = [];
 
-  // インデックス番号とファイル名
+  // インデックス番号とファイル名（ヘッダー部分）
   const displayName = ref.fileName || ref.title || 'ドキュメント';
   contents.push({
     type: 'text',
@@ -616,16 +659,42 @@ function buildReferenceBox_(ref) {
     });
   }
 
-  // スニペット（もしあれば）
+  // 引用文章（チャンクの内容）- より目立つように表示
   if (ref.snippet) {
+    // セパレーター
+    contents.push({
+      type: 'separator',
+      margin: 'md'
+    });
+
+    // 引用文章のラベル
     contents.push({
       type: 'text',
-      text: `"${ref.snippet}"`,
+      text: '💬 引用文章：',
       size: 'xs',
-      color: '#7f8c8d',
-      wrap: true,
-      margin: 'sm',
-      style: 'italic'
+      weight: 'bold',
+      color: '#34495e',
+      margin: 'md'
+    });
+
+    // 引用文章の本文（より目立つボックスで表示）
+    contents.push({
+      type: 'box',
+      layout: 'vertical',
+      contents: [{
+        type: 'text',
+        text: `"${ref.snippet}"`,
+        size: 'xs',
+        color: '#2c3e50',
+        wrap: true,
+        style: 'italic'
+      }],
+      backgroundColor: '#ffffff',
+      cornerRadius: 'sm',
+      paddingAll: 'sm',
+      margin: 'xs',
+      borderWidth: '2px',
+      borderColor: '#3498db'
     });
   }
 
