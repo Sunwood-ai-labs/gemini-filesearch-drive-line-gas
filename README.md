@@ -78,12 +78,12 @@
 
 <div align="center">
   <img src="./images/IMG_0935.jpg" alt="Google Drive 取り込みフローのビジュアル" width="520" />
-  <p><em>Gemini が Google Drive からファイルを取り込むシナリオを表現したビジュアル</em></p>
+  <p><em>Google Drive からファイルを取り込む実際のスクリーンショット</em></p>
 </div>
 
 <div align="center">
   <img src="./images/IMG_0936.jpg" alt="Gemini 要約レスポンスのビジュアル" width="520" />
-  <p><em>取り込んだ情報を Gemini が要約し、LINE に返す流れをイメージしたビジュアル</em></p>
+  <p><em>Gemini が要約し LINE に返す実際のスクリーンショット</em></p>
 </div>
 
 ## 🤝 Contributing
